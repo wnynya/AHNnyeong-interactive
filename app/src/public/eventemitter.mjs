@@ -1,11 +1,11 @@
 'use strict';
 
 /**
- * modules/eventemitter.mjs
+ * eventemitter.js
  *
  * nodejs 에 있는 EventEmitter 를 브라우저에서도 쓰고 싶어
  *
- * @author Wany <sung@wany.io> (https://wany.io)
+ * @author Sungwan Jo <sung@wanyne.com> (https://wanyne.com)
  */
 
 class EventEmitter {
