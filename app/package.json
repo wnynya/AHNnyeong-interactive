@@ -1,0 +1,23 @@
+{
+  "name": "ahnnyeong-interactive",
+  "version": "1.0.0",
+  "description": "안녕(     ) 입구 인터렉티브",
+  "main": "src/app.js",
+  "type": "module",
+  "scripts": {
+    "dev": "nodemon src/app.mjs -p 3980"
+  },
+  "dependencies": {
+    "express": "^5.1.0",
+    "ws": "^8.18.3"
+  },
+  "nodemonConfig": {
+    "watch": [
+      "*"
+    ],
+    "ignore": [
+      "./src/public"
+    ],
+    "ext": "js,mjs,json,html,css,txt"
+  }
+}
