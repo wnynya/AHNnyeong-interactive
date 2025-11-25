@@ -57,14 +57,18 @@ class TouchCursor extends EventEmitter {
       }
     });
     document.body.addEventListener('mouseup', (event) => {
-      mouse = false;
-      const point = this.mapScreenPoint(event.pageX, event.pageY);
-      this.emit('end', point);
+      if (mouse) {
+        mouse = false;
+        const point = this.mapScreenPoint(event.pageX, event.pageY);
+        this.emit('end', point);
+      }
     });
     document.body.addEventListener('mouseleave', (event) => {
-      mouse = false;
-      const point = this.mapScreenPoint(event.pageX, event.pageY);
-      this.emit('end', point);
+      if (mouse) {
+        mouse = false;
+        const point = this.mapScreenPoint(event.pageX, event.pageY);
+        this.emit('end', point);
+      }
     });
   }
 
@@ -91,7 +95,7 @@ class TouchCursor extends EventEmitter {
     let tx = px - rect.left;
     let ty = py - rect.top;
     let x = (tx / w) * 2 - 1;
-    let y = ((ty / h) * 2 - 1) * -1;
+    let y = (ty / h) * 2 - 1;
     return this.rotatePoint([x, y], this.areaDeg);
   }
 }

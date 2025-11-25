@@ -6,7 +6,6 @@ let wsc;
 let touchCursor;
 let shapes = [];
 let shapets = 0;
-
 const canvas = document.querySelector('#canvas');
 canvas.width = canvas.offsetWidth * 2;
 canvas.height = canvas.offsetHeight * 2;
@@ -44,29 +43,23 @@ function draw() {
   });
 }
 
-function init() {
-  touchCursor = new TouchCursor(document.querySelector('#drawing'));
-  touchCursor.on('start', (point) => {
-    shapes.push(new DrawingShape());
-    shapes[shapes.length - 1].addPoint(point.x, point.y, 1);
-    shapets = Date.now();
+function shapesJSON() {
+  const json = [];
+  shapes.forEach((shape) => {
+    json.push(shape.toJSON());
   });
-  touchCursor.on('move', (point) => {
-    const t = Date.now() - shapets;
-    shapes[shapes.length - 1].addPoint(point.x, point.y, t);
-    shapets = Date.now();
-  });
-  touchCursor.on('end', (point) => {
-    const t = Date.now() - shapets;
-    shapes[shapes.length - 1].addPoint(point.x, point.y, t);
-  });
+  return json;
+}
 
+function sync() {
+  wsc.event('sync', shapesJSON());
+}
+
+function init() {
   wsc = new WebsocketClient('/source');
   wsc.on('open', () => {
     console.log('wsc open');
-  });
-  wsc.on('json', (con, event, data) => {
-    console.log(event, data);
+    sync();
   });
   wsc.on('close', () => {
     console.log('wsc close');
@@ -74,6 +67,42 @@ function init() {
   wsc.on('error', () => {
     console.log('wsc error');
   });
+  wsc.on('json', (con, event) => {
+    if (event === 'sync') {
+      sync();
+    }
+  });
   wsc.open();
+
+  touchCursor = new TouchCursor(document.querySelector('#drawing'));
+  touchCursor.on('start', (point) => {
+    shapes.push(new DrawingShape());
+    wsc.event('newshape');
+    shapes[shapes.length - 1].addPoint(point.x, point.y, 1);
+    wsc.event('addpoint', { x: point.x, y: point.y, t: 1 });
+    shapets = Date.now();
+  });
+  touchCursor.on('move', (point) => {
+    if (!shapes[shapes.length - 1]) {
+      return;
+    }
+    const t = Date.now() - shapets;
+    shapes[shapes.length - 1].addPoint(point.x, point.y, t);
+    wsc.event('addpoint', { x: point.x, y: point.y, t: t });
+    shapets = Date.now();
+  });
+  touchCursor.on('end', (point) => {
+    if (!shapes[shapes.length - 1]) {
+      return;
+    }
+    const t = Date.now() - shapets;
+    shapes[shapes.length - 1].addPoint(point.x, point.y, t);
+    wsc.event('addpoint', { x: point.x, y: point.y, t: t });
+  });
+
+  document.querySelector('#button-clear').addEventListener('click', () => {
+    shapes = [];
+    sync();
+  });
 }
 init();
