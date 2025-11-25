@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Vector Drawing Flocking</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        overflow: hidden;
+        background: #111;
+      }
+      canvas {
+        display: block;
+        background: #111;
+      }
+      .info {
+        position: fixed;
+        left: 16px;
+        top: 16px;
+        color: #eee;
+        font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+        font-size: 13px;
+        background: rgba(0, 0, 0, 0.4);
+        padding: 8px 10px;
+        border-radius: 8px;
+        pointer-events: none;
+        user-select: none;
+      }
+    </style>
+  </head>
+  <body>
+    <canvas id="c"></canvas>
+    <div class="info">
+      드래그해서 원하는 모양을 그리면<br />
+      입자들이 그 모양으로 정렬돼요 ✨<br />
+      <b>Space</b> : 다시 흩어지기<br />
+      <b>엔티티 수</b> : 400
+    </div>
+
+    <script>
+      const canvas = document.getElementById('c');
+      const ctx = canvas.getContext('2d');
+
+      function resize() {
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+      }
+      window.addEventListener('resize', resize);
+      resize();
+
+      // ======================
+      // Vector 클래스
+      // ======================
+      class Vector {
+        constructor(x = 0, y = 0) {
+          this.x = x;
+          this.y = y;
+        }
+
+        clone() {
+          return new Vector(this.x, this.y);
+        }
+
+        set(x, y) {
+          this.x = x;
+          this.y = y;
+          return this;
+        }
+
+        add(v) {
+          this.x += v.x;
+          this.y += v.y;
+          return this;
+        }
+
+        sub(v) {
+          this.x -= v.x;
+          this.y -= v.y;
+          return this;
+        }
+
+        mul(s) {
+          this.x *= s;
+          this.y *= s;
+          return this;
+        }
+
+        length() {
+          return Math.hypot(this.x, this.y);
+        }
+
+        normalize() {
+          const len = this.length();
+          if (len > 0) {
+            this.x /= len;
+            this.y /= len;
+          }
+          return this;
+        }
+
+        lerpTo(v, t) {
+          this.x += (v.x - this.x) * t;
+          this.y += (v.y - this.y) * t;
+          return this;
+        }
+
+        static sub(a, b) {
+          return new Vector(a.x - b.x, a.y - b.y);
+        }
+      }
+
+      // ======================
+      // Entity 클래스
+      // ======================
+      class Entity {
+        constructor(x, y) {
+          this.pos = new Vector(x, y);
+          // 랜덤 속도 (자유롭게 떠다니기용)
+          const angle = Math.random() * Math.PI * 2;
+          const speed = 0.5 + Math.random() * 0.8;
+          this.vel = new Vector(
+            Math.cos(angle) * speed,
+            Math.sin(angle) * speed
+          );
+
+          // 나중에 벡터 드로잉에 따라 정렬할 target
+          this.target = null;
+
+          // 약간 텍스쳐 느낌: 크기/색/투명도 랜덤
+          this.size = 3 + Math.random() * 3;
+          this.color = `hsla(${Math.random() * 360}, 60%, 70%, 0.9)`;
+        }
+
+        setTarget(vec) {
+          this.target = vec.clone();
+        }
+
+        clearTarget() {
+          this.target = null;
+        }
+
+        update(mode) {
+          if (mode === 'wander' || !this.target) {
+            this.updateWander();
+          } else {
+            this.updateAlign();
+          }
+        }
+
+        updateWander() {
+          // 살짝 랜덤하게 방향 살짝살짝 흔들기
+          this.vel.x += (Math.random() - 0.5) * 0.05;
+          this.vel.y += (Math.random() - 0.5) * 0.05;
+
+          // 속도 제한
+          const maxSpeed = 1.2;
+          const speed = this.vel.length();
+          if (speed > maxSpeed) {
+            this.vel.normalize().mul(maxSpeed);
+          }
+
+          this.pos.add(this.vel);
+
+          // 화면 밖으로 나가면 튕기기
+          if (this.pos.x < 0 || this.pos.x > canvas.width) {
+            this.vel.x *= -1;
+          }
+          if (this.pos.y < 0 || this.pos.y > canvas.height) {
+            this.vel.y *= -1;
+          }
+
+          // 살짝 안쪽으로 밀어주기
+          this.pos.x = Math.max(-50, Math.min(canvas.width + 50, this.pos.x));
+          this.pos.y = Math.max(-50, Math.min(canvas.height + 50, this.pos.y));
+        }
+
+        updateAlign() {
+          // target 쪽으로 서서히 끌려가기 (lerp)
+          this.pos.lerpTo(this.target, 0.06);
+
+          // target 근처에서도 약간 살아있는 느낌으로 흔들리게
+          this.pos.x += (Math.random() - 0.5) * 0.2;
+          this.pos.y += (Math.random() - 0.5) * 0.2;
+        }
+
+        draw(ctx) {
+          ctx.beginPath();
+          ctx.fillStyle = this.color;
+          ctx.arc(this.pos.x, this.pos.y, this.size, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+
+      // ======================
+      // 엔티티 생성
+      // ======================
+      const ENT_COUNT = 400;
+      const entities = [];
+      function initEntities() {
+        entities.length = 0;
+        for (let i = 0; i < ENT_COUNT; i++) {
+          const x = Math.random() * canvas.width;
+          const y = Math.random() * canvas.height;
+          entities.push(new Entity(x, y));
+        }
+      }
+      initEntities();
+
+      // ======================
+      // 드로잉(벡터 모양) 관련
+      // ======================
+      let drawing = false;
+      let strokePoints = []; // 마우스로 그린 포인트들
+      let mode = 'wander'; // 'wander' or 'align'
+
+      function getMousePos(e) {
+        const rect = canvas.getBoundingClientRect();
+        return new Vector(e.clientX - rect.left, e.clientY - rect.top);
+      }
+
+      canvas.addEventListener('mousedown', (e) => {
+        drawing = true;
+        strokePoints = [];
+        strokePoints.push(getMousePos(e));
+        mode = 'wander'; // 그리는 동안엔 wander 유지
+      });
+
+      canvas.addEventListener('mousemove', (e) => {
+        if (!drawing) return;
+        const p = getMousePos(e);
+        const last = strokePoints[strokePoints.length - 1];
+        const dist = Vector.sub(p, last).length();
+        // 포인트 간격이 너무 촘촘하면 적당히 스킵
+        if (dist > 4) {
+          strokePoints.push(p);
+        }
+      });
+
+      canvas.addEventListener('mouseup', () => {
+        drawing = false;
+        if (strokePoints.length < 2) return;
+        applyStrokeToEntities();
+      });
+
+      canvas.addEventListener('mouseleave', () => {
+        drawing = false;
+      });
+
+      // Space 누르면 다시 자유롭게
+      window.addEventListener('keydown', (e) => {
+        if (e.code === 'Space') {
+          mode = 'wander';
+          entities.forEach((ent) => ent.clearTarget());
+          strokePoints = [];
+        }
+      });
+
+      // strokePoints를 따라 균등 간격으로 샘플링해서
+      // 엔티티 각각의 target으로 할당
+      function applyStrokeToEntities() {
+        // 길이 배열 만들기
+        const segLengths = [];
+        let totalLen = 0;
+        for (let i = 1; i < strokePoints.length; i++) {
+          const a = strokePoints[i - 1];
+          const b = strokePoints[i];
+          const len = Vector.sub(b, a).length();
+          segLengths.push(len);
+          totalLen += len;
+        }
+        if (totalLen === 0) return;
+
+        // 엔티티 수만큼 stroke 위에서 샘플링
+        const targets = [];
+        for (let i = 0; i < entities.length; i++) {
+          const t = (i / (entities.length - 1)) * totalLen;
+          let acc = 0;
+          let segIndex = 0;
+
+          while (
+            segIndex < segLengths.length &&
+            acc + segLengths[segIndex] < t
+          ) {
+            acc += segLengths[segIndex];
+            segIndex++;
+          }
+
+          if (segIndex >= segLengths.length) {
+            // 마지막 포인트로
+            const last = strokePoints[strokePoints.length - 1];
+            targets.push(last.clone());
+          } else {
+            const a = strokePoints[segIndex];
+            const b = strokePoints[segIndex + 1];
+            const segLen = segLengths[segIndex];
+            const localT = (t - acc) / (segLen || 1);
+            const x = a.x + (b.x - a.x) * localT;
+            const y = a.y + (b.y - a.y) * localT;
+            targets.push(new Vector(x, y));
+          }
+        }
+
+        // 엔티티에 타겟 할당 (섞어서 주면 더 자연스럽게 모임)
+        const shuffled = targets.slice();
+        for (let i = shuffled.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+        }
+
+        entities.forEach((ent, i) => {
+          ent.setTarget(shuffled[i]);
+        });
+
+        mode = 'align';
+      }
+
+      // ======================
+      // 메인 루프
+      // ======================
+      function loop() {
+        requestAnimationFrame(loop);
+
+        // 배경 약간 잔상 남게
+        ctx.fillStyle = 'rgba(17, 17, 17, 0.25)';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        // 현재 그리고 있는 stroke가 있으면 보여주기
+        if (strokePoints.length > 1) {
+          ctx.beginPath();
+          ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+          ctx.lineWidth = 2;
+          ctx.lineJoin = 'round';
+          ctx.lineCap = 'round';
+          ctx.moveTo(strokePoints[0].x, strokePoints[0].y);
+          for (let i = 1; i < strokePoints.length; i++) {
+            ctx.lineTo(strokePoints[i].x, strokePoints[i].y);
+          }
+          ctx.stroke();
+        }
+
+        // 엔티티 업데이트 & 그리기
+        for (const ent of entities) {
+          ent.update(mode);
+          ent.draw(ctx);
+        }
+      }
+
+      loop();
+    </script>
+  </body>
+</html>

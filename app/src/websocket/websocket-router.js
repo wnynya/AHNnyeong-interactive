@@ -12,7 +12,7 @@ function use(path, server) {
   servers[path] = server;
 }
 
-import { source, target } from './serial.js';
+import { source, target } from './wss.js';
 use('/source', source);
 use('/target', target);
 

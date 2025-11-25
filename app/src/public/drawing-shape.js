@@ -34,7 +34,11 @@ class DrawingShape {
   #totalDuration = 0;
   #lastPoint = null;
 
-  constructor(json) {}
+  constructor(strokes = []) {
+    strokes.forEach((stroke) => {
+      this.#strokes.push(new Stroke(stroke.from, stroke.to, stroke.duration));
+    });
+  }
 
   addPoint(x, y, time = 1) {
     time = Math.max(1, time);
