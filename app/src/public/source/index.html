@@ -14,18 +14,27 @@
     <title>Source - 안녕 (&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;)</title>
   </head>
   <body>
-    <div id="app">
-      <div id="app-background" layer></div>
-      <div id="app-canvas" layer>
-        <canvas id="canvas" layer></canvas>
+    <main>
+      <div id="app">
+        <div id="app-background" layer>
+          <img src="/assets/frame/pad-frame.svg" />
+        </div>
+        <div id="app-canvas" layer>
+          <canvas id="canvas" layer></canvas>
+        </div>
+        <div id="app-drawing" layer>
+          <div id="drawing" layer></div>
+        </div>
+        <div id="app-control" layer>
+          <div class="button" id="button-reset">
+            <img src="/assets/frame/button_reset.svg" />
+          </div>
+          <div class="button" id="button-save">
+            <img src="/assets/frame/button_save.svg" />
+          </div>
+        </div>
       </div>
-      <div id="app-drawing" layer>
-        <div id="drawing" layer></div>
-      </div>
-      <div id="app-control" layer>
-        <button id="button-clear">초기화</button>
-      </div>
-    </div>
+    </main>
 
     <script src="index.js" type="module"></script>
   </body>

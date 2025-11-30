@@ -2,16 +2,18 @@ import DrawingShape from '../drawing-shape.js';
 import WebsocketClient from '../websocket-client.mjs';
 import { easeout } from '../bezier.js';
 
+// 아이패드 정렬용 기준 화면 비율 (width / height)
+const DESIGN_ASPECT = 4 / 3;
+
 // 이미지 개수
 const IMG_COUNT = 18;
 // 이미지 저장 배열
 const textures = [];
 
 // 이미지별 사이즈 배율 테이블
-// key: 파일 번호 (ahn-1.png → 1)
 const TEXTURE_SCALE = {
-  1: 1.0, // ahn-1.png
-  2: 1.0, // ahn-2.png
+  1: 1.0,
+  2: 1.0,
   3: 1.0,
   4: 1.0,
   5: 1.0,
@@ -27,10 +29,8 @@ const TEXTURE_SCALE = {
   15: 1.0,
   16: 1.0,
   17: 1.0,
-  18: 1.0, // ahn-18.png
+  18: 1.0,
 };
-// 나중에 예: 5번 이미지만 좀 더 크게
-// TEXTURE_SCALE[5] = 1.8;
 
 // 이미지 로드 함수
 function loadTextures() {
@@ -92,8 +92,6 @@ class Vector {
 }
 
 class Entity {
-  // 엔티티의 초기 위치는 정규화된 [-1,1] 범위
-  // 엔티티의 초기 위치는 정규화된 [-1,1] 범위
   constructor(x, y) {
     this.pos = new Vector(x, y);
     const angle = Math.random() * Math.PI * 2;
@@ -119,32 +117,47 @@ class Entity {
     this.sizePhase = 0;
     this.sizeHold = 0;
 
-    // --- wander 관련 상태 ---
-    this.wanderTime = 0;
-    this.wanderDuration = 0;
-    this.wanderDir = new Vector(1, 0); // 방향 단위 벡터
-    this.wanderSpeed = 0.001; // 기본 속도
-
-    this.wanderState = 'move'; // 'move' | 'rest'
-    this.restTime = 0;
-    this.restDuration = 0;
-
-    this.pickNewWander(); // 첫 wander 방향 세팅
+    // --- wander 관련 상태 (연속 이동 + 부드러운 방향 회전) ---
+    this.wanderAngle = Math.random() * Math.PI * 2;
+    this.wanderAngleStart = this.wanderAngle;
+    this.wanderAngleTarget = this.wanderAngle;
+    this.wanderAnglePhase = 1; // 처음 프레임에 새 타겟을 잡도록
+    this.wanderDuration = 60 + Math.floor(Math.random() * 180); // 1~4초
+    this.wanderSpeed = 0.0005 + Math.random() * 0.0015; // 기본 속도
 
     // --- align 관련 상태 ---
-    this.alignPhase = 0; // 0 ~ 1
+    this.alignPhase = 0; // 0 ~ 1 (타겟까지 붙는 애니메이션)
     this.alignStartPos = this.pos.clone();
+    this.alignSettled = false; // 타겟에 붙은 이후인지
+    this.alignTime = 0; // hover용 시간
+    this.alignHoverRadius = 0.01 + Math.random() * 0.01; // 주변에서 떠다니는 반경
+    this.alignHoverSpeedX = 0.01 + Math.random() * 0.03;
+    this.alignHoverSpeedY = 0.01 + Math.random() * 0.03;
+    this.alignHoverPhase = Math.random() * Math.PI * 2;
+
+    // --- life(등장/퇴장) 관련 상태 ---
+    this.lifeState = 'normal'; // 'appearing' | 'normal' | 'disappearing'
+    this.lifePhase = 1; // 0~1
+    this.isDead = false; // 삭제 예정 플래그
   }
 
   setTarget(vec) {
     this.target = vec.clone();
     this.alignPhase = 0;
     this.alignStartPos = this.pos.clone();
+    this.alignSettled = false;
+    this.alignTime = 0;
   }
+
   clearTarget() {
     this.target = null;
   }
+
   update(mode) {
+    this.updateLife();
+
+    if (this.isDead) return;
+
     if (mode === 'wander' || !this.target) {
       this.updateWander();
     } else {
@@ -153,119 +166,132 @@ class Entity {
     this.updateSize();
   }
 
+  // --- wander: 쉬지 않고 계속 부드럽게 방향을 바꿔가며 돌아다니기 ---
   updateWander() {
-    if (this.wanderState === 'rest') {
-      // 쉬는 중: 위치 안 바꾸고 시간만 흐르게
-      this.restTime++;
-      this.vel.x = 0;
-      this.vel.y = 0;
+    // 각도 보간 구간이 끝났으면 새 목표 각도 설정
+    if (this.wanderAnglePhase >= 1) {
+      this.wanderAnglePhase = 0;
+      this.wanderAngleStart = this.wanderAngleTarget;
 
-      if (this.restTime > this.restDuration) {
-        // 충분히 쉰 뒤 다시 이동 시작
-        this.pickNewWander();
-      }
-      return;
+      // 현재 각도에서 -45도 ~ +45도 사이로 살짝 방향 틀기
+      const delta = (Math.random() - 0.5) * (Math.PI / 2);
+      this.wanderAngleTarget = this.wanderAngleStart + delta;
+
+      // 속도/지속시간도 약간씩 갱신해서 너무 패턴 같지 않게
+      this.wanderSpeed = 0.0005 + Math.random() * 0.0015;
+      this.wanderDuration = 60 + Math.floor(Math.random() * 180); // 1~4초
     }
 
-    // ===== 여기부터 'move' 상태 =====
-    this.wanderTime++;
+    // phase 0 → 1
+    this.wanderAnglePhase += 1 / this.wanderDuration;
+    if (this.wanderAnglePhase > 1) this.wanderAnglePhase = 1;
 
-    // 시간이 다 됐거나, wanderDir이 없으면 한 번 이동 끝 → 쉬러 가기
-    let endSegment = false;
-    if (!this.wanderDir || this.wanderTime > this.wanderDuration) {
-      endSegment = true;
-    }
+    const t = easeout(this.wanderAnglePhase);
+    const angle =
+      this.wanderAngleStart +
+      (this.wanderAngleTarget - this.wanderAngleStart) * t;
+    this.wanderAngle = angle;
 
-    // 0 ~ 1 사이의 phase
-    const phase = Math.min(1, this.wanderTime / this.wanderDuration || 1);
-    // 맨 처음 빠르게 → 끝으로 갈수록 천천히: easeout(1 - phase)
-    const eased = easeout(1 - phase);
+    // 해당 각도 기준으로 방향/속도 계산
+    const dirX = Math.cos(angle);
+    const dirY = Math.sin(angle);
 
-    // 완전 멈추진 않도록 0.3 ~ 1.0 범위로 속도 스케일
-    const speed = this.wanderSpeed * (0.3 + 0.7 * eased);
-
-    // 현재 방향에 easeout 적용된 속도 반영
-    this.vel.x = this.wanderDir.x * speed;
-    this.vel.y = this.wanderDir.y * speed;
+    this.vel.x = dirX * this.wanderSpeed;
+    this.vel.y = dirY * this.wanderSpeed;
 
     // 위치 업데이트
     this.pos.add(this.vel);
 
-    // 경계 [-1, 1]을 넘으면 "벽에 부딪힌 것처럼" 쉬러 가기
-    if (
-      this.pos.x < -1 ||
-      this.pos.x > 1 ||
-      this.pos.y < -1 ||
-      this.pos.y > 1
-    ) {
-      endSegment = true;
+    // 경계 처리: 튕기되 떨림 없이 방향만 바꿔주기
+    const margin = 0.05;
+    let bounced = false;
+
+    if (this.pos.x < -1 - margin) {
+      this.pos.x = -1 - margin;
+      this.vel.x *= -1;
+      bounced = true;
+    } else if (this.pos.x > 1 + margin) {
+      this.pos.x = 1 + margin;
+      this.vel.x *= -1;
+      bounced = true;
     }
 
-    const margin = 0.05;
-    this.pos.x = Math.max(-1 - margin, Math.min(1 + margin, this.pos.x));
-    this.pos.y = Math.max(-1 - margin, Math.min(1 + margin, this.pos.y));
+    if (this.pos.y < -1 - margin) {
+      this.pos.y = -1 - margin;
+      this.vel.y *= -1;
+      bounced = true;
+    } else if (this.pos.y > 1 + margin) {
+      this.pos.y = 1 + margin;
+      this.vel.y *= -1;
+      bounced = true;
+    }
 
-    if (endSegment) {
-      this.enterRest();
+    if (bounced) {
+      this.wanderAngle = Math.atan2(this.vel.y, this.vel.x);
+      this.wanderAngleStart = this.wanderAngle;
+      this.wanderAngleTarget = this.wanderAngle;
+      this.wanderAnglePhase = 1;
     }
   }
 
+  // --- align: 타겟까지 easeout으로 붙고, 그 주변에서만 살짝 떠다니기 ---
   updateAlign() {
-    // 타겟 없으면 wander 로
     if (!this.target) {
       this.updateWander();
       return;
     }
 
-    // phase 증가 (대략 0.5초~1초 정도에 맞게 조절)
-    this.alignPhase += 1 / 30; // 30프레임 동안 0→1
-    if (this.alignPhase > 1) this.alignPhase = 1;
-
-    const t = easeout(this.alignPhase); // 0~1 → easeout 적용
-
-    // 시작점에서 타겟까지 easeout 으로 위치 보간
-    const sx = this.alignStartPos.x;
-    const sy = this.alignStartPos.y;
     const tx = this.target.x;
     const ty = this.target.y;
 
-    this.pos.x = sx + (tx - sx) * t;
-    this.pos.y = sy + (ty - sy) * t;
+    if (!this.alignSettled) {
+      this.alignPhase += 1 / 30; // 약 0.5~1초
+      if (this.alignPhase > 1) this.alignPhase = 1;
 
-    // 약간의 랜덤 흔들림
-    if (Math.random() > 0.95) {
-      this.pos.x += (Math.random() - 0.5) * 0.005;
-      this.pos.y += (Math.random() - 0.5) * 0.005;
-    }
+      const t = easeout(this.alignPhase);
 
-    // 타겟과의 거리 측정해서 충분히 가까우면 다시 wander로
-    const dx = tx - this.pos.x;
-    const dy = ty - this.pos.y;
-    const dist = Math.hypot(dx, dy);
+      const sx = this.alignStartPos.x;
+      const sy = this.alignStartPos.y;
 
-    if (dist < 0.01) {
-      this.clearTarget();
-      this.pickNewWander();
+      this.pos.x = sx + (tx - sx) * t;
+      this.pos.y = sy + (ty - sy) * t;
+
+      if (this.alignPhase >= 1) {
+        this.alignSettled = true;
+        this.alignTime = 0;
+        this.pos.x = tx;
+        this.pos.y = ty;
+      }
+    } else {
+      this.alignTime++;
+
+      const t = this.alignTime;
+      const ox =
+        Math.sin(t * this.alignHoverSpeedX + this.alignHoverPhase) *
+        this.alignHoverRadius;
+      const oy =
+        Math.cos(t * this.alignHoverSpeedY + this.alignHoverPhase * 0.7) *
+        this.alignHoverRadius;
+
+      this.pos.x = tx + ox;
+      this.pos.y = ty + oy;
     }
   }
 
   updateSize() {
     const MAX_PULSE = Entity.MAX_PULSE;
-    const ANIM_FRAMES = 30; // 커졌다/줄어드는 데 걸리는 프레임 수 (0.5초 정도)
-    const HOLD_FRAMES = 300; // 크게 유지하는 프레임 수 (약 5초)
+    const ANIM_FRAMES = 30;
+    const HOLD_FRAMES = 300;
 
-    // 사이즈 상태에 따라 동작
     switch (this.sizeState) {
       case 'idle': {
-        // 기본 크기 유지
         this.size = this.baseSize;
 
-        // 아직 펄스 중인 엔티티가 충분히 적고, 랜덤 확률로 트리거
         if (Entity.activeCount < MAX_PULSE && Math.random() < 0.002) {
           this.sizeState = 'growing';
           this.sizePhase = 0;
           this.sizeOrig = this.baseSize;
-          this.sizeTarget = this.getSize(5); // 크게 키우기
+          this.sizeTarget = this.getSize(10);
           Entity.activeCount++;
         }
         break;
@@ -284,14 +310,13 @@ class Entity {
 
       case 'holding': {
         this.sizeHold++;
-        this.size = this.sizeTarget; // 그대로 유지
+        this.size = this.sizeTarget;
 
         if (this.sizeHold >= HOLD_FRAMES) {
-          // 줄어들 준비
           this.sizeState = 'shrinking';
           this.sizePhase = 0;
           this.sizeOrig = this.sizeTarget;
-          this.sizeTarget = this.baseSize; // 다시 기본 크기로
+          this.sizeTarget = this.baseSize;
         }
         break;
       }
@@ -302,7 +327,9 @@ class Entity {
           this.sizePhase = 1;
           this.sizeState = 'idle';
           this.size = this.baseSize;
-          Entity.activeCount = Math.max(0, Entity.activeCount - 1);
+          if (Entity.activeCount > 0) {
+            Entity.activeCount--;
+          }
         } else {
           this.applySizeLerp();
         }
@@ -312,21 +339,45 @@ class Entity {
   }
 
   getSize(x = 1) {
-    return 50 * Math.random() * x;
+    let base = 20;
+    let multi = 20;
+    let size = Math.random() * x;
+    return size * multi + base;
   }
 
-  draw(ctx) {
+  draw(ctx, mode, viewAlign) {
     const w = ctx.canvas.width;
     const h = ctx.canvas.height;
-    const x = ((this.pos.x + 1) / 2) * w;
-    const y = ((this.pos.y + 1) / 2) * h;
 
     const img = this.texture;
-    if (!img.complete) return; // 아직 안 불러와졌으면 pass
+    if (!img.complete) return;
 
-    const size = this.size * (this.textureScale ?? 1.0);
+    // --- 두 가지 좌표계에서 화면 좌표 계산 ---
+    // 1) wander 스타일 맵핑 (전체 캔버스)
+    const xWander = ((this.pos.x + 1) / 2) * w;
+    const yWander = ((this.pos.y + 1) / 2) * h;
 
-    // 이미지 비율 유지
+    // 2) align 스타일 맵핑 (아이패드 4:3 영역)
+    const designAspect = DESIGN_ASPECT;
+    const scale = Math.min(w / (2 * designAspect), h / 2);
+    const centerX = w / 2;
+    const centerY = h / 2;
+    const u = this.pos.x * designAspect;
+    const v = this.pos.y;
+    const xAlign = centerX + u * scale;
+    const yAlign = centerY + v * scale;
+
+    // viewAlign(0~1)에 따라 두 좌표계를 부드럽게 섞기
+    const tView = viewAlign; // 0 = wander 방식, 1 = align 방식
+    const x = xWander + (xAlign - xWander) * tView;
+    const y = yWander + (yAlign - yWander) * tView;
+
+    // === 여기부터 크기 계산 ===
+    const lifeScale = this.getLifeScale();
+    if (lifeScale <= 0) return;
+
+    const size = this.size * (this.textureScale ?? 1.0) * lifeScale;
+
     const aspect = img.width / img.height;
     let drawW, drawH;
 
@@ -342,49 +393,59 @@ class Entity {
   }
 
   applySizeLerp() {
-    // phase 는 0 ~ 1, easeout 으로 자연스럽게 보간
     const t = easeout(Math.min(1, Math.max(0, this.sizePhase)));
     this.size = this.sizeOrig + (this.sizeTarget - this.sizeOrig) * t;
   }
 
-  pickNewWander() {
-    const angle = Math.random() * Math.PI * 2;
-    // 살살 움직이는 기본 속도
-    const speed = 0.0005 + Math.random() * 0.0015;
+  updateLife() {
+    const LIFE_FRAMES = 30;
 
-    // 단위 방향 + 기본 속도 분리해서 저장
-    this.wanderDir = new Vector(Math.cos(angle), Math.sin(angle));
-    this.wanderSpeed = speed;
-
-    // 초기 vel 은 시작 시점에서 최대 속도 쪽으로
-    this.vel.x = this.wanderDir.x * this.wanderSpeed;
-    this.vel.y = this.wanderDir.y * this.wanderSpeed;
-
-    // 1초 ~ 5초 정도 한 방향 유지
-    this.wanderDuration = 60 + Math.floor(Math.random() * 240);
-    this.wanderTime = 0;
-
-    // 이동 상태로 전환
-    this.wanderState = 'move';
+    if (this.lifeState === 'appearing') {
+      this.lifePhase += 1 / LIFE_FRAMES;
+      if (this.lifePhase >= 1) {
+        this.lifePhase = 1;
+        this.lifeState = 'normal';
+      }
+    } else if (this.lifeState === 'disappearing') {
+      this.lifePhase += 1 / LIFE_FRAMES;
+      if (this.lifePhase >= 1) {
+        this.lifePhase = 1;
+        this.isDead = true;
+      }
+    }
   }
 
-  enterRest() {
-    this.wanderState = 'rest';
-    this.restTime = 0;
-    // 0.5초 ~ 3초 정도 쉼 (60fps 기준)
-    this.restDuration = 30 + Math.floor(Math.random() * 150);
-    this.vel.x = 0;
-    this.vel.y = 0;
+  getLifeScale() {
+    if (this.lifeState === 'normal') return 1;
+
+    if (this.lifeState === 'appearing') {
+      return easeout(this.lifePhase);
+    }
+    if (this.lifeState === 'disappearing') {
+      return easeout(1 - this.lifePhase);
+    }
+    return 1;
   }
 }
 Entity.activeCount = 0;
-Entity.MAX_PULSE = 5; // 동시에 커질 수 있는 엔티티 수
+Entity.MAX_PULSE = 5;
 
 let wsc;
 let shapes = [];
 const ENT_COUNT = 200;
+const MIN_ENTITIES = 20;
+const MAX_ENTITIES = 1000;
+const ENTITIES_PER_UNIT = 25;
 let entities = [];
 let mode = 'wander';
+
+// 뷰 전환용 보간값 (0: wander 좌표계, 1: align 좌표계)
+let viewAlign = 0;
+let viewAlignTarget = 0;
+
+// 🆕 addpoint로 들어온 마지막 좌표 기억
+let lastInputPoint = null;
+
 const canvas = document.querySelector('#canvas');
 canvas.width = canvas.offsetWidth * 2;
 canvas.height = canvas.offsetHeight * 2;
@@ -400,78 +461,114 @@ function draw() {
   const w = ctx.canvas.width;
   const h = ctx.canvas.height;
 
-  ctx.clearRect(0, 0, w, h);
-  // 도형은 정규화된 좌표를 픽셀로 변환하여 그림
+  // viewAlign을 타겟(viewAlignTarget) 쪽으로 부드럽게 보간
+  viewAlign += (viewAlignTarget - viewAlign) * 0.1;
+  if (Math.abs(viewAlignTarget - viewAlign) < 0.001) {
+    viewAlign = viewAlignTarget;
+  }
 
-  /*
-  shapes.forEach((shape) => {
-    if (shape.length > 1) {
-      shape.strokes.forEach((stroke) => {
-        const f = stroke.from;
-        const fx = ((f.x + 1) / 2) * w;
-        const fy = ((f.y + 1) / 2) * h;
-        const t = stroke.to;
-        const tx = ((t.x + 1) / 2) * w;
-        const ty = ((t.y + 1) / 2) * h;
-        ctx.beginPath();
-        ctx.moveTo(fx, fy);
-        ctx.lineTo(tx, ty);
-        ctx.strokeStyle = 'black';
-        ctx.lineWidth = 20;
-        ctx.lineCap = 'round';
-        ctx.stroke();
-      });
-    }
-  });
-  */
+  ctx.clearRect(0, 0, w, h);
 
   entities.forEach((ent) => {
     ent.update(mode);
-    ent.draw(ctx);
+    ent.draw(ctx, mode, viewAlign);
   });
+
+  entities = entities.filter((ent) => !ent.isDead);
 }
 
 // 새로 추가: 스트로크 하나당 할당할 점 개수
 const POINTS_PER_STROKE = 2;
 
 function applyShapeToEntities() {
-  if (!shapes || shapes.length == 0) {
-    for (let i = 0; i < entities.length; i++) {
-      const x = Math.random() * 2 - 1;
-      const y = Math.random() * 2 - 1;
-      entities[i].setTarget(new Vector(x, y));
-    }
-    mode = 'align';
+  // 1) 도형이 없으면: 그냥 wander 모드
+  if (!shapes || shapes.length === 0) {
+    mode = 'wander';
+    viewAlignTarget = 0; // 화면 좌표도 다시 전체 캔버스로 서서히 전환
+
+    entities.forEach((ent) => {
+      ent.clearTarget();
+    });
+
+    setEntityCount(ENT_COUNT);
     return;
   }
 
-  // 각 도형별 전체 길이(거리) 계산
+  // 2) 도형이 있을 때만 align 모드 + 패스 기반 개수 조절
+  mode = 'align';
+  viewAlignTarget = 1; // 화면 좌표를 아이패드 4:3 기준으로 서서히
+
   const shapeDistances = shapes.map((shape) => shape.distance || 0);
   const totalDist = shapeDistances.reduce((sum, d) => sum + d, 0);
-  if (totalDist <= 0) return;
+
+  // === (A) 아주 짧은 패스인 경우: 한 점 주변에 클러스터처럼 모이도록 ===
+  const EPS = 0.001; // 🆕 살짝 여유 있게 키워줌
+  if (totalDist < EPS) {
+    const lastShape = shapes[shapes.length - 1];
+    let center = { x: 0, y: 0 };
+
+    if (lastShape) {
+      if (lastShape.strokes && lastShape.strokes.length > 0) {
+        const lastStroke = lastShape.strokes[lastShape.strokes.length - 1];
+        center = lastStroke.to || lastStroke.from || center;
+      } else if (lastShape.points && lastShape.points.length > 0) {
+        const p = lastShape.points[lastShape.points.length - 1];
+        center = { x: p.x, y: p.y };
+      }
+    }
+
+    // 🆕 위에서 center를 못 잡았으면, 마지막 addpoint 좌표라도 사용
+    if (lastInputPoint) {
+      center = { x: lastInputPoint.x, y: lastInputPoint.y };
+    }
+
+    // 그래도 혹시 모르니 center.x/y가 숫자가 아닐 경우 대비
+    if (!Number.isFinite(center.x) || !Number.isFinite(center.y)) {
+      center = { x: 0, y: 0 };
+    }
+
+    // 짧은 패스일 때도 최소 개수는 유지
+    setEntityCount(MIN_ENTITIES);
+
+    // 🆕 반경도 좀 더 키워서 "확실히 보이게" 퍼뜨리기
+    const CLUSTER_RADIUS = 0.08; // 이전 0.02 → 0.08 정도로
+    entities.forEach((ent) => {
+      const r = CLUSTER_RADIUS * Math.sqrt(Math.random()); // 중심에 너무 몰리지 않게
+      const ang = Math.random() * Math.PI * 2;
+      const jx = center.x + Math.cos(ang) * r;
+      const jy = center.y + Math.sin(ang) * r;
+      ent.setTarget(new Vector(jx, jy));
+    });
+
+    return;
+  }
 
   const targets = [];
 
-  // 모든 엔티티 수(ENT_COUNT)만큼 도형 전체에 균등하게 포인트를 샘플링
+  // 패스 길이에 따라 엔티티 수 결정
+  let desiredCount = Math.round(totalDist * ENTITIES_PER_UNIT);
+  desiredCount = Math.max(MIN_ENTITIES, Math.min(MAX_ENTITIES, desiredCount));
+  setEntityCount(desiredCount);
+
   for (let i = 0; i < entities.length; i++) {
-    // 도형 전체 길이에 대한 누적 거리값
-    const d = (i / (entities.length - 1)) * totalDist;
+    const d =
+      entities.length > 1
+        ? (i / (entities.length - 1)) * totalDist
+        : totalDist / 2;
+
     let accDist = 0;
     let pos = null;
 
     for (let sIndex = 0; sIndex < shapes.length; sIndex++) {
       const shapeDist = shapeDistances[sIndex];
       if (d <= accDist + shapeDist) {
-        // 해당 도형에서의 거리(localDist)를 구함
         const localDist = d - accDist;
         const shape = shapes[sIndex];
 
-        // 도형 내부에서 원하는 지점을 찾기 위해 스트로크를 순회
         let accStrokeDist = 0;
         for (const stroke of shape.strokes) {
           const sLen = stroke.length || 0;
           if (localDist <= accStrokeDist + sLen) {
-            // 현재 스트로크 내에서 비율(rel)을 계산하여 좌표를 얻음
             const rel = (localDist - accStrokeDist) / (sLen || 1);
             const p = stroke.posAt(rel);
             pos = p;
@@ -480,7 +577,6 @@ function applyShapeToEntities() {
           accStrokeDist += sLen;
         }
 
-        // 혹시 못 찾았다면 마지막 스트로크의 끝점 사용
         if (!pos && shape.strokes.length > 0) {
           const lastStroke = shape.strokes[shape.strokes.length - 1];
           pos = lastStroke.to;
@@ -490,7 +586,6 @@ function applyShapeToEntities() {
       accDist += shapeDist;
     }
 
-    // 마지막 도형도 없다면 기본값
     if (!pos) {
       const lastShape = shapes[shapes.length - 1];
       if (lastShape.strokes && lastShape.strokes.length > 0) {
@@ -500,22 +595,66 @@ function applyShapeToEntities() {
       }
     }
 
-    // 각 엔티티에 정규화된 좌표를 직접 할당
     targets.push(new Vector(pos.x, pos.y));
   }
 
-  // 필요하다면 targets 배열을 섞어 자연스럽게 보이도록 할 수 있습니다.
   const shuffled = targets.slice();
   for (let i = shuffled.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
     [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
   }
 
-  // 모든 엔티티에 타깃 좌표 할당
   for (let i = 0; i < entities.length; i++) {
     entities[i].setTarget(shuffled[i]);
   }
-  mode = 'align';
+}
+
+function setEntityCount(targetCount) {
+  targetCount = Math.max(0, Math.floor(targetCount));
+  targetCount = Math.min(MAX_ENTITIES, targetCount);
+
+  const current = entities.length;
+
+  if (targetCount === current) return;
+
+  if (targetCount > current) {
+    const toAdd = targetCount - current;
+    for (let i = 0; i < toAdd; i++) {
+      const x = Math.random() * 2 - 1;
+      const y = Math.random() * 2 - 1;
+      const ent = new Entity(x, y);
+      ent.lifeState = 'appearing';
+      ent.lifePhase = 0;
+      entities.push(ent);
+    }
+  } else {
+    const toRemove = current - targetCount;
+
+    const indices = entities.map((_, idx) => idx);
+    for (let i = indices.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [indices[i], indices[j]] = [indices[j], indices[i]];
+    }
+
+    let removed = 0;
+    for (let i = 0; i < indices.length && removed < toRemove; i++) {
+      const ent = entities[indices[i]];
+      if (!ent || ent.lifeState === 'disappearing') continue;
+
+      // 🆕 만약 이 엔티티가 펄스 중이었다면 activeCount 정리
+      if (ent.sizeState !== 'idle') {
+        ent.sizeState = 'idle';
+        ent.size = ent.baseSize;
+        if (Entity.activeCount > 0) {
+          Entity.activeCount--;
+        }
+      }
+
+      ent.lifeState = 'disappearing';
+      ent.lifePhase = 0;
+      removed++;
+    }
+  }
 }
 
 function init() {
@@ -534,18 +673,21 @@ function init() {
       const ds = new DrawingShape();
       shapes.push(ds);
     } else if (event === 'addpoint') {
-      // 추가되는 점도 이미 정규화된 좌표라고 가정
-      shapes[shapes.length - 1].addPoint(data.x, data.y, data.r);
+      // 🆕 마지막 입력 좌표 저장
+      lastInputPoint = { x: data.x, y: data.y };
+
+      let t = Math.max(10, data.r);
+      shapes[shapes.length - 1].addPoint(data.x, data.y, t);
     }
-    // 도형 변경 시에만 타깃 업데이트
     applyShapeToEntities();
   });
   wsc.open();
 
   function initEntities() {
     entities.length = 0;
+    Entity.activeCount = 0; // 🆕 펄스 카운터도 리셋
+
     for (let i = 0; i < ENT_COUNT; i++) {
-      // 정규화된 [-1, 1] 범위에서 무작위 초기 위치
       const x = Math.random() * 2 - 1;
       const y = Math.random() * 2 - 1;
       entities.push(new Entity(x, y));
@@ -554,3 +696,7 @@ function init() {
   initEntities();
 }
 init();
+
+window.getShapes = () => {
+  console.log(shapes);
+};

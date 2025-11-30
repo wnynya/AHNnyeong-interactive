@@ -35,7 +35,7 @@ function draw() {
         ctx.moveTo(fx, fy);
         ctx.lineTo(tx, ty);
         ctx.strokeStyle = 'black';
-        ctx.lineWidth = 20;
+        ctx.lineWidth = 15;
         ctx.lineCap = 'round';
         ctx.stroke();
       });
@@ -100,7 +100,7 @@ function init() {
     wsc.event('addpoint', { x: point.x, y: point.y, t: t });
   });
 
-  document.querySelector('#button-clear').addEventListener('click', () => {
+  document.querySelector('#button-reset').addEventListener('click', () => {
     shapes = [];
     sync();
   });

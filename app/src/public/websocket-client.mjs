@@ -10,7 +10,7 @@ class WebSocketClient extends EventEmitter {
 
     options.autoReconnect = options.autoReconnect
       ? options.autoReconnect
-      : false;
+      : true;
     this.options = options;
 
     this.connection = null;
