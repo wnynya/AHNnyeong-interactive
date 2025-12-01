@@ -38,9 +38,11 @@ main {
   align-items: flex-end;
 }
 #app-control > .button {
+  box-sizing: content-box;
   pointer-events: all;
   height: calc(5% + 3rem);
-  padding: 1.5rem;
+  padding: 3rem;
+  padding-bottom: 4rem;
 }
 #app-control > .button > img {
   height: 100%;
