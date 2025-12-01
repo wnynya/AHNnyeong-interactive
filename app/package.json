@@ -7,7 +7,7 @@
   "type": "module",
   "main": "src/app.js",
   "scripts": {
-    "dev": "nodemon src/app.mjs -p 2980"
+    "dev": "nodemon src/app.mjs -p 3980"
   },
   "dependencies": {
     "express": "^5.1.0",
