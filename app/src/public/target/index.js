@@ -33,7 +33,7 @@ const TEXTURE_SCALE = {
 };
 
 // 엔티티 개수 관련
-const INITIAL_ENTITY_COUNT = 50;
+const INITIAL_ENTITY_COUNT = 70;
 const MIN_ENTITY_COUNT = 10;
 const MAX_ENTITY_COUNT = 1000;
 const ENTITIES_PER_UNIT_LENGTH = 25; // 패스 길이당 엔티티 밀도
@@ -333,7 +333,7 @@ class Entity {
           this.sizeState = 'growing';
           this.sizePhase = 0;
           this.sizeOrig = this.baseSize;
-          this.sizeTarget = this.getRandomSize(10);
+          this.sizeTarget = this.getRandomSize(20);
           pulseCount++;
         }
         break;
@@ -378,7 +378,7 @@ class Entity {
   }
 
   getRandomSize(multiplier = 1) {
-    const base = 20;
+    const base = 40;
     const scale = 20;
     const rand = Math.random() * multiplier;
     return rand * scale + base;
@@ -756,6 +756,8 @@ function initWebsocket() {
       if (currentShape) {
         currentShape.addPoint(data.x, data.y, radius);
       }
+    } else if (event === 'refresh') {
+      window.location.reload();
     }
 
     updateEntitiesFromShapes();

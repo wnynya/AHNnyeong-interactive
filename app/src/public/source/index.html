@@ -12,6 +12,23 @@
     <link href="index.css" rel="stylesheet" />
 
     <title>Source - 안녕 (&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;)</title>
+
+    <!-- ✅ PWA manifest -->
+    <link rel="manifest" href="/source/app.webmanifest" />
+
+    <!-- ✅ 브라우저/OS 테마 컬러 -->
+    <meta name="theme-color" content="#ffffff" />
+
+    <!-- ✅ iOS(iPad)용: 웹 앱처럼 보이게 -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="안녕" />
+    <meta
+      name="apple-mobile-web-app-status-bar-style"
+      content="black-translucent"
+    />
+
+    <!-- ✅ iOS 홈 화면 아이콘 -->
+    <link rel="apple-touch-icon" href="/assets/icons/icon-192.png" />
   </head>
   <body>
     <main>
@@ -32,6 +49,9 @@
           <div class="button" id="button-save">
             <img src="/assets/frame/button_save.svg" />
           </div>
+        </div>
+        <div id="app-text" layer>
+          <p>무엇이든 그려보세요</p>
         </div>
       </div>
     </main>

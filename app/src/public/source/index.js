@@ -70,6 +70,8 @@ function init() {
   wsc.on('json', (con, event) => {
     if (event === 'sync') {
       sync();
+    } else if (event === 'refresh') {
+      window.location.reload();
     }
   });
   wsc.open();
@@ -101,6 +103,10 @@ function init() {
   });
 
   document.querySelector('#button-reset').addEventListener('click', () => {
+    shapes = [];
+    sync();
+  });
+  document.querySelector('#button-save').addEventListener('click', () => {
     shapes = [];
     sync();
   });
